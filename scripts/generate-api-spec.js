@@ -24,6 +24,11 @@ const outputIdx = args.indexOf('--output');
 const outputPath = outputIdx !== -1 ? args[outputIdx + 1] : path.join(__dirname, '../API_SPEC.md');
 const openApiPath = path.join(__dirname, '../services/api/openapi.yaml');
 
+// Base URL shown in the generated docs. Sourced from config/env so it reflects
+// the real deployment bind address; defaults to the services/api default bind
+// address (0.0.0.0:8080).
+const baseUrl = process.env.API_BASE_URL || `http://0.0.0.0:${process.env.PORT || 8080}`;
+
 // HTTP methods defined by the OpenAPI 3.x specification for path items.
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
@@ -98,7 +103,7 @@ ${spec.description}
 ### Base URL
 
 \`\`\`
-http://0.0.0.0:8080
+${baseUrl}
 \`\`\`
 
 ### API Versioning
@@ -199,6 +204,14 @@ how many seconds to wait before retrying.
 }
 
 /**
+ * Strip the volatile generation timestamp line so content comparisons in
+ * --check mode are not defeated by a value that changes on every run.
+ */
+function normalizeForComparison(markdown) {
+  return markdown.replace(/^\*\*Last Updated:\*\*.*$/m, '**Last Updated:** <normalized>');
+}
+
+/**
  * Main execution
  */
 function main() {
@@ -208,10 +221,11 @@ function main() {
   const markdown = generateMarkdown(spec);
   
   if (checkMode) {
-    // Check if current file matches generated content
+    // Check if current file matches generated content, ignoring the
+    // generation timestamp which differs on every invocation.
     if (fs.existsSync(outputPath)) {
       const current = fs.readFileSync(outputPath, 'utf8');
-      if (current === markdown) {
+      if (normalizeForComparison(current) === normalizeForComparison(markdown)) {
         console.log('✅ API_SPEC.md is in sync with openapi.yaml');
         process.exit(0);
       } else {
